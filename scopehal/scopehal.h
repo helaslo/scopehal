@@ -59,8 +59,13 @@
 
 #include <sigc++/sigc++.h>
 
+#if defined(_WIN32)
+#define message(...)
+#endif
 #include <yaml-cpp/yaml.h>
-
+#ifdef _WIN32
+#undef message
+#endif
 #include "../log/log.h"
 #include "../xptools/TimeUtil.h"
 
@@ -270,12 +275,17 @@ extern bool g_vulkanDeviceIsMoltenVK;
 extern uint32_t g_vkPinnedMemoryHeap;
 extern uint32_t g_vkLocalMemoryHeap;
 extern bool g_vulkanDeviceHasUnifiedMemory;
-extern std::shared_mutex g_vulkanActivityMutex;;
+extern std::shared_mutex g_vulkanActivityMutex;
+;
 
 //Validation helper for templates
 //Throws compile-time error if specialized for false since there's no implementation
-template<bool> class CompileTimeAssert;
-template<> class CompileTimeAssert<true>{};
+template<bool>
+class CompileTimeAssert;
+template<>
+class CompileTimeAssert<true>
+{
+};
 
 #ifdef _WIN32
 std::string NarrowPath(wchar_t* wide);
