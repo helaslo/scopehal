@@ -2898,7 +2898,7 @@ uint64_t SiglentSCPIOscilloscope::GetSampleDepth()
 				break;
 				// --------------------------------------------------
 		}
-		f = Unit(Unit::UNIT_SAMPLEDEPTH).ParseString(reply);
+		f = Unit(Unit::UNIT_SAMPLEDEPTH).ParseString(reply, false);
 		m_memoryDepth = static_cast<int64_t>(f);
 		m_memoryDepthValid = true;
 	}
@@ -4083,10 +4083,10 @@ void SiglentSCPIOscilloscope::PullRuntTrigger()
 		case PROTOCOL_E11:
 
 			//Lower bound
-			rt->SetLowerBound(v.ParseString(converse(":TRIGGER:RUNT:LLEVEL?")));
+			rt->SetLowerBound(v.ParseString(converse(":TRIGGER:RUNT:LLEVEL?"), false));
 
 			//Upper bound
-			rt->SetUpperBound(v.ParseString(converse(":TRIGGER:RUNT:HLEVEL?")));
+			rt->SetUpperBound(v.ParseString(converse(":TRIGGER:RUNT:HLEVEL?"), false));
 
 			//Lower bound
 			rt->SetLowerInterval(fs.ParseString(converse(":TRIGGER:RUNT:TLOWER?")));
@@ -4144,10 +4144,10 @@ void SiglentSCPIOscilloscope::PullSlewRateTrigger()
 		case PROTOCOL_E11:
 
 			//Lower bound
-	        st->SetLowerBound(v.ParseString(converse(":TRIGGER:SLOPE:LLEVEL?")));
+			st->SetLowerBound(v.ParseString(converse(":TRIGGER:SLOPE:LLEVEL?", false)));
 
 			//Upper bound
-			st->SetUpperBound(v.ParseString(converse(":TRIGGER:SLOPE:HLEVEL?")));
+			st->SetUpperBound(v.ParseString(converse(":TRIGGER:SLOPE:HLEVEL?", false)));
 
 	        //Lower interval
 			st->SetLowerInterval(fs.ParseString(converse(":TRIGGER:SLOPE:TLOWER?")));
@@ -4293,10 +4293,10 @@ void SiglentSCPIOscilloscope::PullWindowTrigger()
 		case PROTOCOL_E11:
 
 			//Lower bound
-			wt->SetLowerBound(v.ParseString(converse(":TRIGGER:WINDOW:LLEVEL?")));
+			wt->SetLowerBound(v.ParseString(converse(":TRIGGER:WINDOW:LLEVEL?", false)));
 
 			//Upper bound
-			wt->SetUpperBound(v.ParseString(converse(":TRIGGER:WINDOW:HLEVEL?")));
+			wt->SetUpperBound(v.ParseString(converse(":TRIGGER:WINDOW:HLEVEL?", false)));
 			break;
 		// --------------------------------------------------
 		default:
@@ -5137,14 +5137,14 @@ FunctionGenerator::WaveShape SiglentSCPIOscilloscope::GetFunctionChannelShape(in
 		//Some of the fields  are redundant, we don't care about all of them.
 
 		Unit volts(Unit::UNIT_VOLTS);
-		m_awgRange[chan] = volts.ParseString(bswv["AMP"]);
-		m_awgOffset[chan] = volts.ParseString(bswv["OFST"]);
+		m_awgRange[chan] = volts.ParseString(bswv["AMP"], false);
+		m_awgOffset[chan] = volts.ParseString(bswv["OFST"], false);
 
 		Unit hz(Unit::UNIT_HZ);
-		m_awgFrequency[chan] = hz.ParseString(bswv["FRQ"]);
+		m_awgFrequency[chan] = hz.ParseString(bswv["FRQ"], false);
 
 		Unit percent(Unit::UNIT_PERCENT);
-		m_awgDutyCycle[chan] = percent.ParseString(bswv["DUTY"]);
+		m_awgDutyCycle[chan] = percent.ParseString(bswv["DUTY"], false);
 
 		//TODO: RISE/FALL seems only supported on SDGs, not scope integrated generator
 

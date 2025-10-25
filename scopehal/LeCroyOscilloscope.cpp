@@ -4744,11 +4744,11 @@ void LeCroyOscilloscope::PullRuntTrigger()
 	//Lower bound
 	Unit v(Unit::UNIT_VOLTS);
 	auto tmp = m_transport->SendCommandQueuedWithReply("VBS? 'return = app.Acquisition.Trigger.Runt.LowerLevel'");
-	rt->SetLowerBound(v.ParseString(tmp));
+	rt->SetLowerBound(v.ParseString(tmp, false));
 
 	//Upper bound
 	tmp = m_transport->SendCommandQueuedWithReply("VBS? 'return = app.Acquisition.Trigger.Runt.UpperLevel'");
-	rt->SetUpperBound(v.ParseString(tmp));
+	rt->SetUpperBound(v.ParseString(tmp, false));
 
 	//Lower interval
 	Unit fs(Unit::UNIT_FS);
@@ -4792,11 +4792,11 @@ void LeCroyOscilloscope::PullSlewRateTrigger()
 	//Lower bound
 	Unit v(Unit::UNIT_VOLTS);
 	auto tmp = m_transport->SendCommandQueuedWithReply("VBS? 'return = app.Acquisition.Trigger.SlewRate.LowerLevel'");
-	st->SetLowerBound(v.ParseString(tmp));
+	st->SetLowerBound(v.ParseString(tmp, false));
 
 	//Upper bound
 	tmp = m_transport->SendCommandQueuedWithReply("VBS? 'return = app.Acquisition.Trigger.SlewRate.UpperLevel'");
-	st->SetUpperBound(v.ParseString(tmp));
+	st->SetUpperBound(v.ParseString(tmp, false));
 
 	//Lower interval
 	Unit fs(Unit::UNIT_FS);
@@ -4961,11 +4961,11 @@ void LeCroyOscilloscope::PullWindowTrigger()
 	Unit v(Unit::UNIT_VOLTS);
 	auto tmp = m_transport->SendCommandQueuedWithReply(
 		"VBS? 'return = app.Acquisition.Trigger.Window.LowerLevel'");
-	wt->SetLowerBound(v.ParseString(tmp));
+	wt->SetLowerBound(v.ParseString(tmp, false));
 
 	//Upper bound
 	tmp = m_transport->SendCommandQueuedWithReply("VBS? 'return = app.Acquisition.Trigger.Window.UpperLevel'");
-	wt->SetUpperBound(v.ParseString(tmp));
+	wt->SetUpperBound(v.ParseString(tmp, false));
 }
 
 /**

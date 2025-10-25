@@ -176,19 +176,19 @@ void SiglentFunctionGenerator::ParseBasicWaveform(const string& str, size_t i)
 	{
 		if(it.first == "AMP")
 		{
-			m_cachedAmplitude[i] = volts.ParseString(it.second);
+			m_cachedAmplitude[i] = volts.ParseString(it.second, false);
 			m_cachedAmplitudeValid[i] = true;
 		}
 
 		if(it.first == "OFST")
 		{
-			m_cachedOffset[i] = volts.ParseString(it.second);
+			m_cachedOffset[i] = volts.ParseString(it.second, false);
 			m_cachedOffsetValid[i] = true;
 		}
 
 		if(it.first == "FRQ")
 		{
-			m_cachedFrequency[i] = hz.ParseString(it.second);
+			m_cachedFrequency[i] = hz.ParseString(it.second, false);
 			m_cachedFrequencyValid[i] = true;
 		}
 
