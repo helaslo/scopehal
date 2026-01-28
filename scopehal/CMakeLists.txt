@@ -168,6 +168,7 @@ set(SCOPEHAL_SOURCES
 	GWInstekGPDX303SPowerSupply.cpp
 	HaasoscopePro.cpp
 	KeysightDCA.cpp
+	KeysightMultimeter.cpp
 	LeCroyOscilloscope.cpp
 	LeCroyFWPOscilloscope.cpp
 	MockOscilloscope.cpp
