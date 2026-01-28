@@ -186,6 +186,7 @@ set(SCOPEHAL_SOURCES
 	SiglentVectorSignalGenerator.cpp
 	TektronixOscilloscope.cpp
 	TektronixHSIOscilloscope.cpp
+	TektronixTSxOscilloscope.cpp
 	ThunderScopeOscilloscope.cpp
 	TinySA.cpp
 	UHDBridgeSDR.cpp

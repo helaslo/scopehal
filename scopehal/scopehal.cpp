@@ -104,6 +104,7 @@
 #include "PulseWidthTrigger.h"
 #include "RuntTrigger.h"
 #include "SlewRateTrigger.h"
+#include "TektronixTSxOscilloscope.h"
 #include "UartTrigger.h"
 #include "WindowTrigger.h"
 
@@ -252,6 +253,7 @@ void DriverStaticInit()
 	AddDriverClass(SiglentSCPIOscilloscope);
 	AddDriverClass(TektronixOscilloscope);
 	AddDriverClass(TektronixHSIOscilloscope);
+	AddDriverClass(TektronixTSxOscilloscope);
 	AddDriverClass(ThunderScopeOscilloscope);
 	AddDriverClass(TinySA);
 #ifdef __linux
