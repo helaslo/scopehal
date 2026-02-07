@@ -61,6 +61,7 @@ set(SCOPEHAL_SOURCES
 	scopehal.cpp
 	avx_mathfun.cpp
 	VulkanInit.cpp
+	AbstractRenderingEnvironment.cpp
 
 	FileSystem.cpp
 	Unit.cpp
@@ -258,7 +259,6 @@ target_link_libraries(scopehal
 	Vulkan::Loader
 	Vulkan::Headers
 	glslang::glslang
-	glfw
 	${WIN_LIBS}
 	)
 

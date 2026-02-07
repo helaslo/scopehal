@@ -79,6 +79,8 @@
 
 //must be early because a lot of inline methods in headers rely on these
 #ifdef __x86_64__
+
+class AbstractRenderingEnvironment;
 extern bool g_hasFMA;
 extern bool g_hasAvx512F;
 extern bool g_hasAvx512VL;
@@ -269,6 +271,7 @@ struct ConvertRawSamplesShaderArgs
 //Vulkan global stuff
 extern vk::raii::Context g_vkContext;
 extern std::unique_ptr<vk::raii::Instance> g_vkInstance;
+extern std::unique_ptr<AbstractRenderingEnvironment> g_renderEnv;
 extern uint8_t g_vkComputeDeviceUuid[16];
 extern uint32_t g_vkComputeDeviceDriverVer;
 extern vk::raii::PhysicalDevice* g_vkComputePhysicalDevice;

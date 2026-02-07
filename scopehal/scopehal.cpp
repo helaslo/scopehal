@@ -875,7 +875,6 @@ string FindDataFile(const string& relpath)
 		fclose(fp);
 		return relpath;
 	}
-
 	for(auto dir : g_searchPaths)
 	{
 		string path = dir + "/" + relpath;

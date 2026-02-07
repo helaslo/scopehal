@@ -47,6 +47,8 @@
 #pragma GCC diagnostic ignored "-Wpedantic"
 #pragma GCC diagnostic ignored "-Wshadow"
 #pragma GCC diagnostic ignored "-Wsign-compare"
+#include "AbstractRenderingEnvironment.h"
+
 #include <vkFFT.h>
 #pragma GCC diagnostic pop
 
@@ -63,6 +65,8 @@ vk::raii::Context g_vkContext;
 	@ingroup vksupport
  */
 unique_ptr<vk::raii::Instance> g_vkInstance;
+
+unique_ptr<AbstractRenderingEnvironment> g_renderEnv;
 
 /**
 	@brief The Vulkan device selected for compute operations (may or may not be same device as rendering)
@@ -255,18 +259,11 @@ bool g_vulkanDeviceIsMoltenVK = false;
 void VulkanCleanup();
 
 bool VulkanInitInstance(
-	bool skipGLFW,
-	bool& vulkan11Available,
-	bool& vulkan12Available,
-	bool& hasPhysicalDeviceProperties2);
+	bool skipGLFW, bool& vulkan11Available, bool& vulkan12Available, bool& hasPhysicalDeviceProperties2);
 
-void VulkanPrintPhysicalDeviceInfo(
-	size_t i,
-	vk::raii::PhysicalDevice& device,
-	bool hasPhysicalDeviceProperties2);
+void VulkanPrintPhysicalDeviceInfo(size_t i, vk::raii::PhysicalDevice& device, bool hasPhysicalDeviceProperties2);
 
-void VulkanCreateDevice(
-	vk::raii::PhysicalDevice& device,
+void VulkanCreateDevice(vk::raii::PhysicalDevice& device,
 	bool vulkan11Available,
 	bool vulkan12Available,
 	bool hasPhysicalDeviceProperties2);
@@ -278,10 +275,7 @@ void VulkanCreateDevice(
 	@param skipGLFW Do not initialize GLFW
  */
 bool VulkanInitInstance(
-	bool skipGLFW,
-	bool& vulkan11Available,
-	bool& vulkan12Available,
-	bool& hasPhysicalDeviceProperties2)
+	bool skipGLFW, bool& vulkan11Available, bool& vulkan12Available, bool& hasPhysicalDeviceProperties2)
 {
 	//Get info about the Vulkan instance / loader as a whole
 	auto extensions = g_vkContext.enumerateInstanceExtensionProperties();
@@ -290,6 +284,7 @@ bool VulkanInitInstance(
 	bool hasXcbSurface = false;
 	for(auto e : extensions)
 	{
+
 		if(!strcmp((char*)e.extensionName, "VK_KHR_get_physical_device_properties2"))
 		{
 			LogDebug("VK_KHR_get_physical_device_properties2: supported\n");
@@ -322,7 +317,7 @@ bool VulkanInitInstance(
 	vulkan11Available = false;
 	vulkan12Available = false;
 	LogDebug("Loader/API support available for Vulkan %d.%d\n", loader_major, loader_minor);
-	if( (loader_major >= 1) || ( (loader_major == 1) && (loader_minor >= 2) ) )
+	if((loader_major >= 1) || ((loader_major == 1) && (loader_minor >= 2)))
 	{
 		apiVersion = VK_API_VERSION_1_2;
 		vulkan12Available = true;
@@ -336,20 +331,9 @@ bool VulkanInitInstance(
 		LogDebug("Skipping GLFW init to work around gtk gl/vulkan interop bug\n");
 	else
 	{
-		//Log glfw version
-		LogDebug("Initializing glfw %s\n", glfwGetVersionString());
-
 		//Initialize glfw
-		glfwInitHint(GLFW_JOYSTICK_HAT_BUTTONS, GLFW_FALSE);
-		glfwInitHint(GLFW_COCOA_CHDIR_RESOURCES, GLFW_FALSE);
-		if(!glfwInit())
+		if(!g_renderEnv->PerformInitialSetup())
 		{
-			LogError("glfw init failed\n");
-			return false;
-		}
-		if(!glfwVulkanSupported())
-		{
-			LogError("glfw vulkan support not available\n");
 			return false;
 		}
 	}
@@ -369,37 +353,47 @@ bool VulkanInitInstance(
 	if(g_hasDebugUtils)
 		extensionsToUse.push_back("VK_EXT_debug_utils");
 
-	//Required for MoltenVK
-	#ifdef __APPLE__
+	LogDebug("All extensions:\r\n");
+	for(auto e : extensions)
+	{
+		LogIndenter li2;
+		LogDebug("%s\n", e.extensionName.data());
+	}
+
+//Required for MoltenVK
+#ifdef __APPLE__
 	extensionsToUse.push_back("VK_KHR_portability_enumeration");
-	#endif
+#endif
 
 	//See what extensions are required
 	if(!skipGLFW)
 	{
-		uint32_t glfwRequiredCount = 0;
-		auto glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwRequiredCount);
-		if(glfwExtensions == nullptr)
+		auto requiredExtensionsOpt = g_renderEnv->GetNecessaryVulkanExtensions();
+
+		if(!requiredExtensionsOpt)
 		{
-			const char* err = nullptr;
-			auto code = glfwGetError(&err);
-			LogError("glfwGetRequiredInstanceExtensions failed, code %d (%s)\n", code, err);
 			return false;
 		}
-		LogDebug("GLFW required extensions:\n");
-		for(size_t i=0; i<glfwRequiredCount; i++)
+		const auto& requiredExtensions = *requiredExtensionsOpt;
+		LogDebug("Required extensions:\n");
+		for(const auto& ext : requiredExtensions)
 		{
 			LogIndenter li2;
-			LogDebug("%s\n", glfwExtensions[i]);
-			extensionsToUse.push_back(glfwExtensions[i]);
+			LogDebug("%s\n", ext);
+			if(ranges::find(extensionsToUse, std::string(ext)) == extensionsToUse.end())
+			{
+				//FIXME remove this
+				// if(!ext.contains("wayland"))
+				extensionsToUse.emplace_back(ext);
+			}
 		}
 	}
 
 	//Create the instance
 	vk::InstanceCreateFlags flags = {};
-	#ifdef __APPLE__
+#ifdef __APPLE__
 	flags = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR;
-	#endif
+#endif
 	vk::InstanceCreateInfo instanceInfo(flags, &appInfo, {}, extensionsToUse);
 	g_vkInstance = make_unique<vk::raii::Instance>(g_vkContext, instanceInfo);
 
@@ -414,10 +408,7 @@ bool VulkanInitInstance(
 
 	@ingroup vksupport
  */
-void VulkanPrintPhysicalDeviceInfo(
-	size_t i,
-	vk::raii::PhysicalDevice& device,
-	bool hasPhysicalDeviceProperties2)
+void VulkanPrintPhysicalDeviceInfo(size_t i, vk::raii::PhysicalDevice& device, bool hasPhysicalDeviceProperties2)
 {
 	auto features = device.getFeatures();
 	auto properties = device.getProperties();
@@ -432,19 +423,17 @@ void VulkanPrintPhysicalDeviceInfo(
 		(properties.apiVersion >> 29),
 		(properties.apiVersion >> 22) & 0x7f,
 		(properties.apiVersion >> 12) & 0x3ff,
-		(properties.apiVersion >> 0) & 0xfff
-		);
+		(properties.apiVersion >> 0) & 0xfff);
 
 	//Driver version is NOT guaranteed to be encoded the same way as the API version.
-	if(properties.vendorID == 0x10de)	//NVIDIA
+	if(properties.vendorID == 0x10de)	 //NVIDIA
 	{
 		LogDebug("Driver version:         0x%08x (%d.%d.%d.%d)\n",
 			properties.driverVersion,
 			(properties.driverVersion >> 22),
 			(properties.driverVersion >> 14) & 0xff,
 			(properties.driverVersion >> 6) & 0xff,
-			(properties.driverVersion >> 0) & 0x3f
-			);
+			(properties.driverVersion >> 0) & 0x3f);
 	}
 
 	//By default, assume it's the same as API
@@ -455,8 +444,7 @@ void VulkanPrintPhysicalDeviceInfo(
 			(properties.driverVersion >> 29),
 			(properties.driverVersion >> 22) & 0x7f,
 			(properties.driverVersion >> 12) & 0x3ff,
-			(properties.driverVersion >> 0) & 0xfff
-			);
+			(properties.driverVersion >> 0) & 0xfff);
 	}
 
 	LogDebug("Vendor ID:              %04x\n", properties.vendorID);
@@ -493,12 +481,10 @@ void VulkanPrintPhysicalDeviceInfo(
 	if(hasPhysicalDeviceProperties2)
 	{
 		//Get more details
-		auto features2 = device.getFeatures2<
-			vk::PhysicalDeviceFeatures2,
+		auto features2 = device.getFeatures2<vk::PhysicalDeviceFeatures2,
 			vk::PhysicalDevice16BitStorageFeatures,
 			vk::PhysicalDevice8BitStorageFeatures,
-			vk::PhysicalDeviceVulkan12Features
-			>();
+			vk::PhysicalDeviceVulkan12Features>();
 		auto storageFeatures16 = std::get<1>(features2);
 		auto storageFeatures8 = std::get<2>(features2);
 		auto vulkan12Features = std::get<3>(features2);
@@ -535,8 +521,8 @@ void VulkanPrintPhysicalDeviceInfo(
 	}
 
 	const size_t k = 1024LL;
-	const size_t m = k*k;
-	const size_t g = k*m;
+	const size_t m = k * k;
+	const size_t g = k * m;
 
 	LogDebug("Max image dim 2D:       %u\n", limits.maxImageDimension2D);
 	LogDebug("Max storage buf range:  %zu MB\n", limits.maxStorageBufferRange / m);
@@ -546,7 +532,7 @@ void VulkanPrintPhysicalDeviceInfo(
 		limits.maxComputeWorkGroupCount[0],
 		limits.maxComputeWorkGroupCount[1],
 		limits.maxComputeWorkGroupCount[2]);
-	for(int j=0; j<3; j++)
+	for(int j = 0; j < 3; j++)
 		g_maxComputeGroupCount[j] = limits.maxComputeWorkGroupCount[j];
 	LogDebug("Max compute invocs:     %u\n", limits.maxComputeWorkGroupInvocations);
 	LogDebug("Max compute grp size:   %u x %u x %u\n",
@@ -555,7 +541,7 @@ void VulkanPrintPhysicalDeviceInfo(
 		limits.maxComputeWorkGroupSize[2]);
 
 	LogDebug("Memory types:\n");
-	for(size_t j=0; j<memProperties.memoryTypeCount; j++)
+	for(size_t j = 0; j < memProperties.memoryTypeCount; j++)
 	{
 		auto mtype = memProperties.memoryTypes[j];
 
@@ -585,7 +571,7 @@ void VulkanPrintPhysicalDeviceInfo(
 	}
 
 	LogDebug("Memory heaps:\n");
-	for(size_t j=0; j<memProperties.memoryHeapCount; j++)
+	for(size_t j = 0; j < memProperties.memoryHeapCount; j++)
 	{
 		LogIndenter li4;
 		LogDebug("Heap %zu\n", j);
@@ -616,10 +602,7 @@ void VulkanPrintPhysicalDeviceInfo(
 	@ingroup vksupport
  */
 void VulkanCreateDevice(
-	vk::raii::PhysicalDevice& device,
-	bool vulkan11Available,
-	bool vulkan12Available,
-	bool hasPhysicalDeviceProperties2)
+	vk::raii::PhysicalDevice& device, bool vulkan11Available, bool vulkan12Available, bool hasPhysicalDeviceProperties2)
 {
 	g_vkComputePhysicalDevice = &device;
 
@@ -630,7 +613,7 @@ void VulkanCreateDevice(
 	LogDebug("Queue families (%zu total)\n", families.size());
 	{
 		LogIndenter li4;
-		for(size_t j=0; j<families.size(); j++)
+		for(size_t j = 0; j < families.size(); j++)
 		{
 			LogDebug("Queue type %zu\n", j);
 			LogIndenter li5;
@@ -648,12 +631,12 @@ void VulkanCreateDevice(
 				LogDebug("Sparse binding\n");
 			if(f.queueFlags & vk::QueueFlagBits::eProtected)
 				LogDebug("Protected\n");
-			#ifdef VK_ENABLE_BETA_EXTENSIONS
-				if(f.queueFlags & vk::QueueFlagBits::eVideoDecodeKHR)
-					LogDebug("Video decode\n");
-				if(f.queueFlags & vk::QueueFlagBits::eVideoEncodeKHR)
-					LogDebug("Video encode\n");
-			#endif
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+			if(f.queueFlags & vk::QueueFlagBits::eVideoDecodeKHR)
+				LogDebug("Video decode\n");
+			if(f.queueFlags & vk::QueueFlagBits::eVideoEncodeKHR)
+				LogDebug("Video encode\n");
+#endif
 		}
 	}
 
@@ -665,10 +648,7 @@ void VulkanCreateDevice(
 	//Detect driver (used by some workarounds for bugs etc)
 	if(vulkan11Available)
 	{
-		auto features2 = device.getProperties2<
-			vk::PhysicalDeviceProperties2,
-			vk::PhysicalDeviceDriverProperties
-			>();
+		auto features2 = device.getProperties2<vk::PhysicalDeviceProperties2, vk::PhysicalDeviceDriverProperties>();
 		auto driverProperties = std::get<1>(features2);
 
 		//Identify driver
@@ -760,13 +740,11 @@ void VulkanCreateDevice(
 	if(hasPhysicalDeviceProperties2)
 	{
 		//Get more details
-		auto features2 = device.getFeatures2<
-			vk::PhysicalDeviceFeatures2,
+		auto features2 = device.getFeatures2<vk::PhysicalDeviceFeatures2,
 			vk::PhysicalDevice16BitStorageFeatures,
 			vk::PhysicalDevice8BitStorageFeatures,
 			vk::PhysicalDeviceVulkan12Features,
-			vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT
-			>();
+			vk::PhysicalDeviceShaderAtomicFloatFeaturesEXT>();
 		auto storageFeatures16 = std::get<1>(features2);
 		auto storageFeatures8 = std::get<2>(features2);
 		auto vulkan12Features = std::get<3>(features2);
@@ -787,7 +765,9 @@ void VulkanCreateDevice(
 				pNext = &featuresAtomicFloat;
 			}
 			else
-				LogDebug("Partial atomic float support found, but missing shaderBufferFloat32AtomicAdd and/or shaderSharedFloat32AtomicAdd so not useful to us\n");
+				LogDebug(
+					"Partial atomic float support found, but missing shaderBufferFloat32AtomicAdd and/or "
+					"shaderSharedFloat32AtomicAdd so not useful to us\n");
 		}
 
 		//Enable 16 bit SSBOs
@@ -852,13 +832,12 @@ void VulkanCreateDevice(
 	//Request all available queues, and make them all equal priority.
 	vector<vk::DeviceQueueCreateInfo> qinfo;
 	vector<float> queuePriority;
-	for(size_t i=0; i<families.size(); i++)
+	for(size_t i = 0; i < families.size(); i++)
 	{
 		auto f = families[i];
-		for(size_t j=queuePriority.size(); j<f.queueCount; j++)
+		for(size_t j = queuePriority.size(); j < f.queueCount; j++)
 			queuePriority.push_back(0.5);
-		qinfo.push_back(vk::DeviceQueueCreateInfo(
-			{}, i, f.queueCount, &queuePriority[0]));
+		qinfo.push_back(vk::DeviceQueueCreateInfo({}, i, f.queueCount, &queuePriority[0]));
 	}
 
 	//See if the device has KHR_portability_subset (typically the case for MoltenVK)
@@ -897,7 +876,9 @@ void VulkanCreateDevice(
 		if(!strcmp(&ext.extensionName[0], "VK_EXT_memory_budget"))
 		{
 			if(!hasPhysicalDeviceProperties2)
-				LogWarning("VK_EXT_memory_budget is supported, but not VK_KHR_get_physical_device_properties2 so it's useless\n");
+				LogWarning(
+					"VK_EXT_memory_budget is supported, but not VK_KHR_get_physical_device_properties2 so it's "
+					"useless\n");
 			else
 			{
 				LogDebug("Device has VK_EXT_memory_budget, requesting it\n");
@@ -921,13 +902,7 @@ void VulkanCreateDevice(
 		devextensions.push_back("VK_EXT_memory_budget");
 	if(g_hasPushDescriptor)
 		devextensions.push_back("VK_KHR_push_descriptor");
-	vk::DeviceCreateInfo devinfo(
-		{},
-		qinfo,
-		{},
-		devextensions,
-		&enabledFeatures,
-		pNext);
+	vk::DeviceCreateInfo devinfo({}, qinfo, {}, devextensions, &enabledFeatures, pNext);
 	g_vkComputeDevice = make_shared<vk::raii::Device>(device, devinfo);
 
 	//Figure out what memory types to use for various purposes
@@ -939,23 +914,21 @@ void VulkanCreateDevice(
 	g_vkLocalMemoryType = 0;
 	auto memProperties = device.getMemoryProperties();
 	auto devtype = device.getProperties().deviceType;
-	for(size_t j=0; j<memProperties.memoryTypeCount; j++)
+	for(size_t j = 0; j < memProperties.memoryTypeCount; j++)
 	{
 		auto mtype = memProperties.memoryTypes[j];
 
 		//Pinned memory is host visible, host coherent, host cached, and usually not device local
 		//Use the first type we find
-		if(
-			(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible) &&
+		if((mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible) &&
 			(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostCoherent) &&
-			(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostCached) )
+			(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostCached))
 		{
 			//Device local? This is a disqualifier UNLESS we are an integrated card or CPU
 			//(in which case we have shared memory)
 			if(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eDeviceLocal)
 			{
-				if( (devtype != vk::PhysicalDeviceType::eIntegratedGpu) &&
-					(devtype != vk::PhysicalDeviceType::eCpu ) )
+				if((devtype != vk::PhysicalDeviceType::eIntegratedGpu) && (devtype != vk::PhysicalDeviceType::eCpu))
 				{
 					continue;
 				}
@@ -975,8 +948,8 @@ void VulkanCreateDevice(
 		{
 			//Exclude any types that are host visible unless we're an integrated card
 			//(Host visible + device local memory is generally limited and
-			if( (devtype != vk::PhysicalDeviceType::eIntegratedGpu) &&
-				(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible) )
+			if((devtype != vk::PhysicalDeviceType::eIntegratedGpu) &&
+				(mtype.propertyFlags & vk::MemoryPropertyFlagBits::eHostVisible))
 			{
 				continue;
 			}
@@ -1012,7 +985,10 @@ void VulkanCreateDevice(
 
 	LogDebug("Using heap %u, type %u for pinned host memory\n", g_vkPinnedMemoryHeap, g_vkPinnedMemoryType);
 	LogDebug("Using heap %u, type %u for card-local memory\n", g_vkLocalMemoryHeap, g_vkLocalMemoryType);
-	if(g_vulkanDeviceHasUnifiedMemory) { LogDebug("Unified memory GPU optimizations are enabled\n"); }
+	if(g_vulkanDeviceHasUnifiedMemory)
+	{
+		LogDebug("Unified memory GPU optimizations are enabled\n");
+	}
 
 	//Make the queue manager
 	g_vkQueueManager = make_unique<QueueManager>(g_vkComputePhysicalDevice, g_vkComputeDevice);
@@ -1023,13 +999,13 @@ void VulkanCreateDevice(
 	//Make a CommandPool for transfers
 	vk::CommandPoolCreateInfo poolInfo(
 		vk::CommandPoolCreateFlagBits::eTransient | vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-		g_vkTransferQueue->m_family );
+		g_vkTransferQueue->m_family);
 	g_vkTransferCommandPool = make_unique<vk::raii::CommandPool>(*g_vkComputeDevice, poolInfo);
 
 	//Make a CommandBuffer for memory transfers that we can use implicitly during buffer management
 	vk::CommandBufferAllocateInfo bufinfo(**g_vkTransferCommandPool, vk::CommandBufferLevel::ePrimary, 1);
-	g_vkTransferCommandBuffer = make_unique<vk::raii::CommandBuffer>(
-		std::move(vk::raii::CommandBuffers(*g_vkComputeDevice, bufinfo).front()));
+	g_vkTransferCommandBuffer =
+		make_unique<vk::raii::CommandBuffer>(std::move(vk::raii::CommandBuffers(*g_vkComputeDevice, bufinfo).front()));
 }
 
 /**
@@ -1062,7 +1038,7 @@ bool VulkanInit(bool skipGLFW)
 
 			//Log info
 			static vk::raii::PhysicalDevices devices(*g_vkInstance);
-			for(size_t i=0; i<devices.size(); i++)
+			for(size_t i = 0; i < devices.size(); i++)
 			{
 				auto& device = devices[i];
 
@@ -1082,9 +1058,12 @@ bool VulkanInit(bool skipGLFW)
 			if(deviceOverride)
 			{
 				auto ndev = atol(deviceOverride);
-				if( (ndev >= 0) && (ndev < (long)devices.size()) )
+				if((ndev >= 0) && (ndev < (long)devices.size()))
 				{
-					LogNotice("Automatic device selection overridden by SCOPEHAL_VULKAN_DEVICE_OVERRIDE, using device %ld instead\n", ndev);
+					LogNotice(
+						"Automatic device selection overridden by SCOPEHAL_VULKAN_DEVICE_OVERRIDE, using device %ld "
+						"instead\n",
+						ndev);
 					bestDevice = ndev;
 				}
 				else
@@ -1092,14 +1071,10 @@ bool VulkanInit(bool skipGLFW)
 			}
 
 			//Actually create the device
-			VulkanCreateDevice(
-				devices[bestDevice],
-				vulkan11Available,
-				vulkan12Available,
-				hasPhysicalDeviceProperties2);
+			VulkanCreateDevice(devices[bestDevice], vulkan11Available, vulkan12Available, hasPhysicalDeviceProperties2);
 
 			//Destroy other physical devices that we're not using
-			for(size_t i=0; i<devices.size(); i++)
+			for(size_t i = 0; i < devices.size(); i++)
 			{
 				if(i == bestDevice)
 					continue;
@@ -1107,12 +1082,12 @@ bool VulkanInit(bool skipGLFW)
 			}
 		}
 	}
-	catch ( vk::SystemError & err )
+	catch(vk::SystemError& err)
 	{
 		LogError("vk::SystemError: %s\n", err.what());
 		return false;
 	}
-	catch ( std::exception & err )
+	catch(std::exception& err)
 	{
 		LogError("std::exception: %s\n", err.what());
 		return false;
@@ -1144,17 +1119,13 @@ bool VulkanInit(bool skipGLFW)
 
 	if(g_hasDebugUtils)
 	{
-		g_vkComputeDevice->setDebugUtilsObjectNameEXT(
-			vk::DebugUtilsObjectNameInfoEXT(
-				vk::ObjectType::eDevice,
-				reinterpret_cast<uint64_t>(static_cast<VkDevice>(**g_vkComputeDevice)),
-				"g_vkComputeDevice"));
+		g_vkComputeDevice->setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(vk::ObjectType::eDevice,
+			reinterpret_cast<uint64_t>(static_cast<VkDevice>(**g_vkComputeDevice)),
+			"g_vkComputeDevice"));
 
-		g_vkComputeDevice->setDebugUtilsObjectNameEXT(
-			vk::DebugUtilsObjectNameInfoEXT(
-				vk::ObjectType::eCommandBuffer,
-				reinterpret_cast<uint64_t>(static_cast<VkCommandBuffer>(**g_vkTransferCommandBuffer)),
-				"g_vkTransferCommandBuffer"));
+		g_vkComputeDevice->setDebugUtilsObjectNameEXT(vk::DebugUtilsObjectNameInfoEXT(vk::ObjectType::eCommandBuffer,
+			reinterpret_cast<uint64_t>(static_cast<VkCommandBuffer>(**g_vkTransferCommandBuffer)),
+			"g_vkTransferCommandBuffer"));
 
 		//For some reason this doesn't work?
 		/*g_vkComputeDevice->setDebugUtilsObjectNameEXT(
@@ -1183,8 +1154,8 @@ bool IsDevicePreferred(const vk::PhysicalDeviceProperties& a, const vk::Physical
 		return true;
 
 	//Integrated GPUs beat anything but a discrete GPU
-	if( (b.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) &&
-		(a.deviceType != vk::PhysicalDeviceType::eDiscreteGpu) )
+	if((b.deviceType == vk::PhysicalDeviceType::eIntegratedGpu) &&
+		(a.deviceType != vk::PhysicalDeviceType::eDiscreteGpu))
 	{
 		return true;
 	}
@@ -1203,7 +1174,7 @@ bool IsDevicePreferred(const vk::PhysicalDeviceProperties& a, const vk::Physical
  */
 void VulkanCleanup()
 {
-	glfwTerminate();
+	g_renderEnv->TerminateRenderingEnvironment();
 
 	g_pipelineCacheMgr = nullptr;
 
